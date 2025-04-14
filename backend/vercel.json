@@ -1,0 +1,10 @@
+{
+    "version": 2,
+    "builds": [
+      { "src": "backend/connect.cjs", "use": "@vercel/node" }
+    ],
+    "routes": [
+      { "src": "/api/(.*)", "dest": "/backend/connect.cjs" }
+    ]
+  }
+  

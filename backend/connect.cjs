@@ -5,11 +5,15 @@ const bcrypt = require("bcryptjs");
 
 const app = express();
 
-// Middleware
-app.use(cors());
-app.use(express.json());
 
-// MongoDB Connection
+app.use(cors({
+  origin: ["*"],
+  methods: ["POST", "GET"],
+  credentials: true
+}));
+
+
+app.use(express.json());
 const mongoURI = "mongodb+srv://thando:123@vigilantaidsDB.3o2pzls.mongodb.net/VigilentAidsDB?retryWrites=true&w=majority&appName=VigilantAids";
 
 mongoose.connect(mongoURI)
