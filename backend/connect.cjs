@@ -16,6 +16,10 @@ app.use(cors({
 app.use(express.json());
 const mongoURI = "mongodb+srv://thando:123@vigilantaidsDB.3o2pzls.mongodb.net/VigilentAidsDB?retryWrites=true&w=majority&appName=VigilantAids";
 
+module.exports = (req, res) => {
+    res.end('Hello from connect.cjs!');
+  };
+  
 mongoose.connect(mongoURI)
   .then(() => console.log("Connected to MongoDB Atlas!"))
   .catch(err => {
