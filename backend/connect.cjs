@@ -5,21 +5,18 @@ const bcrypt = require("bcryptjs");
 
 const app = express();
 
-
+// CORS Configuration (Specify exact allowed origin)
 app.use(cors({
-  origin: ["*"],
+  origin: "http://yourfrontend.com", // Specify your frontend URL
   methods: ["POST", "GET"],
   credentials: true
 }));
 
-
 app.use(express.json());
-const mongoURI = "mongodb+srv://thando:123@vigilantaidsDB.3o2pzls.mongodb.net/VigilentAidsDB?retryWrites=true&w=majority&appName=VigilantAids";
 
-module.exports = (req, res) => {
-    res.end('Hello from connect.cjs!');
-  };
-  
+// MongoDB URI (Use environment variable in production)
+const mongoURI = process.env.MONGO_URI || "mongodb+srv://thando:123@vigilantaidsDB.3o2pzls.mongodb.net/VigilentAidsDB?retryWrites=true&w=majority&appName=VigilantAids";
+
 mongoose.connect(mongoURI)
   .then(() => console.log("Connected to MongoDB Atlas!"))
   .catch(err => {
@@ -27,13 +24,12 @@ mongoose.connect(mongoURI)
     process.exit(1);
   });
 
-// User Schema (WITH PLAIN TEXT PASSWORD STORAGE - NOT SECURE)
+// User Schema (WITH ONLY HASHED PASSWORD STORAGE)
 const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   country: { type: String, required: true },
   phone: { type: String, required: true },
   password: { type: String, required: true }, // Hashed password
-  plainPassword: { type: String, select: false } // Plain text password (INSECURE)
 });
 
 // Hash password before saving
@@ -47,13 +43,13 @@ userSchema.pre('save', async function(next) {
 
 const User = mongoose.model("User", userSchema, "vigilantaids_users");
 
-// Registration Endpoint (STORES PLAIN TEXT PASSWORD - INSECURE)
+// Registration Endpoint
 app.post("/api/register", async (req, res) => {
   try {
     const { username, country, phone, password } = req.body;
-    
+
     if (!username || !country || !phone || !password) {
-      return res.status(400).json({ error: "Fill in the missing details" });
+      return res.status(400).json({ error: "All fields are required" });
     }
 
     const existingUser = await User.findOne({ username });
@@ -61,15 +57,17 @@ app.post("/api/register", async (req, res) => {
       return res.status(400).json({ error: "Username already exists" });
     }
 
-    // Store both hashed and plain text password (INSECURE)
+    // Hash password and store only the hashed version
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
     const newUser = new User({ 
       username, 
       country, 
       phone, 
-      password,
-      plainPassword: password // Storing plain text password (NOT SECURE)
+      password: hashedPassword,
     });
-    
+
     await newUser.save();
 
     res.status(201).json({ 
@@ -115,20 +113,23 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-// Forgot Password Endpoint (RETURNS PLAIN TEXT PASSWORD - INSECURE)
+// Forgot Password Endpoint (Secure Approach with Reset Token)
 app.post('/api/forgot-password', async (req, res) => {
   try {
     const { username } = req.body;
-    // Explicitly include the plainPassword field
-    const user = await User.findOne({ username }).select('+plainPassword');
-    
+    const user = await User.findOne({ username });
+
     if (!user) {
       return res.status(404).json({ error: 'No account found with that username' });
     }
 
+    // Generate a reset token and send via email (not returning plain password)
+    const resetToken = Math.random().toString(36).slice(-8); // For demonstration only
+    // Email sending logic goes here (e.g., using Nodemailer)
+
     res.json({ 
       success: true,
-      password: user.plainPassword // Returning plain text password (NOT SECURE)
+      resetToken // For the sake of simplicity, we're returning a mock token
     });
   } catch (err) {
     res.status(500).json({ error: 'Password retrieval failed' });
@@ -143,9 +144,9 @@ app.get("/api/users", async (req, res) => {
       return res.status(400).json({ error: "Username is required" });
     }
 
-    const user = await User.findOne({ username }).select('-password -plainPassword');
+    const user = await User.findOne({ username }).select('-password'); // Exclude password
     if (!user) {
-      return res.status(404).json({ error: "You are not found" });
+      return res.status(404).json({ error: "User not found" });
     }
 
     res.json(user);
@@ -166,21 +167,20 @@ app.put("/api/users/:id", async (req, res) => {
 
     const updateData = { username, country, phone };
     
-    // Only update password if it was provided
+    // Only update password if provided
     if (password) {
       const salt = await bcrypt.genSalt(10);
       updateData.password = await bcrypt.hash(password, salt);
-      updateData.plainPassword = password; // Also update plain text (INSECURE)
     }
 
     const updatedUser = await User.findByIdAndUpdate(
       id,
       updateData,
       { new: true }
-    ).select('-password -plainPassword');
+    ).select('-password'); // Exclude password
 
     if (!updatedUser) {
-      return res.status(404).json({ error: "You are not found" });
+      return res.status(404).json({ error: "User not found" });
     }
 
     res.json({ 
@@ -192,7 +192,7 @@ app.put("/api/users/:id", async (req, res) => {
     if (err.code === 11000) { // Duplicate key error
       res.status(400).json({ error: "Username already exists" });
     } else {
-      res.status(500).json({ error: "Can not updating your details" });
+      res.status(500).json({ error: "Cannot update your details" });
     }
   }
 });
@@ -208,7 +208,7 @@ app.delete("/api/users/:id", async (req, res) => {
 
     const deletedUser = await User.findByIdAndDelete(id);
     if (!deletedUser) {
-      return res.status(404).json({ error: "You are not found" });
+      return res.status(404).json({ error: "User not found" });
     }
 
     res.json({ 
@@ -216,11 +216,17 @@ app.delete("/api/users/:id", async (req, res) => {
       message: "Your Account is deleted successfully"
     });
   } catch (err) {
-    res.status(500).json({ error: "Can not delete your account" });
+    res.status(500).json({ error: "Cannot delete your account" });
   }
 });
 
+// Basic Profile Route (Test Endpoint)
+app.get("/profile", (req, res) => {
+  res.json("Successfully deployed");
+});
+
+// Server Setup
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(` Server running on http://localhost:${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });
